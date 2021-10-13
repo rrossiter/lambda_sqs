@@ -1,0 +1,33 @@
+service:
+  name: lambda_sqs
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  memorySize: 128
+  stage: dev
+  timeout: 180
+  region: sa-east-1
+
+functions: ${file(ymls/functions.yml)}
+
+plugins:
+  - serverless-offline
+
+package:
+  exclude:
+    - node_modules/serverless-**
+    - coverage/**
+    - test/**
+    - .nyc_output/**
+    - .env
+    - .gitignore
+    - package-lock.json
+    - README.md
+    - docs/**
+    - .vscode/**
+    - ymls/**
+    - .eslintrc.js
+    - .eslintignore
+    - .editorconfig
+    - .serverless_plugins/**
