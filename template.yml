@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: API Gateway, Lambda function e Simple Queue Service (SQS). 
+
+Parameters:
+  apiGatewayName:
+    Type: String
+    Default: api-integration-erp
+  apiGatewayStageName:
+    Type: String
+    AllowedPattern: "[a-z0-9]+"
+    Default: dev/v1
+  apiGatewayResourceName:
+    Type: String
+    AllowedPattern: "[a-z0-9]+"
+    Default: handler 
+  apiGatewayHTTPMethod:
+    Type: String
+    Default: POST
+  lambdaFunctionName:
+    Type: String
+    AllowedPattern: "[a-zA-Z0-9]+[a-zA-Z0-9-]+[a-zA-Z0-9]+"
+    Default: received-event-handler
+  QueueName:
+    Type: String
+    Description: Queue Name
+    Default: received-events  
+  QueueNameDLQ:
+    Type: String
+    Description: Queue Name Dead Letter Queue - DLQ
+    Default: received-events-dlq
+
+Resources:
+
+  apiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: API Gateway é responsavel por expor realizar a integração com serviços externos.
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Name: !Ref apiGatewayName
+
+  ApiGatewayResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt apiGateway.RootResourceId
+      PathPart: !Ref apiGatewayResourceName
+      RestApiId: !Ref apiGateway     
+
+  apiGatewayRootMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: !Ref apiGatewayHTTPMethod
+      RequestParameters:
+        method.request.header.InvocationType: ""
+      Integration:
+        RequestTemplates:
+          application/json: |
+            ##  See http://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-mapping-template-reference.html
+            ##  This template will pass through all parameters including path, querystring, header, stage variables, and context through to the integration endpoint via the body/payload
+            #set($allParams = $input.params())
+            {
+            "body" : $input.json('$'),
+            "params" : {
+            #foreach($type in $allParams.keySet())
+                #set($params = $allParams.get($type))
+            "$type" : {
+                #foreach($paramName in $params.keySet())
+                "$paramName" : "$util.escapeJavaScript($params.get($paramName))"
+                    #if($foreach.hasNext),#end
+                #end
+            }
+                #if($foreach.hasNext),#end
+            #end
+            },
+            "stageVariables" : {
+            #foreach($key in $stageVariables.keySet())
+            "$key" : "$util.escapeJavaScript($stageVariables.get($key))"
+                #if($foreach.hasNext),#end
+            #end
+            },
+            "context" : {
+                "accountId" : "$context.identity.accountId",
+                "apiId" : "$context.apiId",
+                "apiKey" : "$context.identity.apiKey",
+                "authorizerPrincipalId" : "$context.authorizer.principalId",
+                "caller" : "$context.identity.caller",
+                "cognitoAuthenticationProvider" : "$context.identity.cognitoAuthenticationProvider",
+                "cognitoAuthenticationType" : "$context.identity.cognitoAuthenticationType",
+                "cognitoIdentityId" : "$context.identity.cognitoIdentityId",
+                "cognitoIdentityPoolId" : "$context.identity.cognitoIdentityPoolId",
+                "httpMethod" : "$context.httpMethod",
+                "stage" : "$context.stage",
+                "sourceIp" : "$context.identity.sourceIp",
+                "user" : "$context.identity.user",
+                "userAgent" : "$context.identity.userAgent",
+                "userArn" : "$context.identity.userArn",
+                "requestId" : "$context.requestId",
+                "resourceId" : "$context.resourceId",
+                "resourcePath" : "$context.resourcePath"
+                }
+            }
+        IntegrationHttpMethod: POST
+        Type: AWS
+        IntegrationResponses:
+          - StatusCode: '200'
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        RequestParameters:
+          "integration.request.header.X-Amz-Invocation-Type": "method.request.header.InvocationType"
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn: !GetAtt lambdaFunction.Arn
+      MethodResponses:
+        - ResponseModels:
+            application/json: Empty
+          StatusCode: '200'          
+      OperationName: !Ref apiGatewayResourceName
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref apiGateway
+
+  apiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - apiGatewayRootMethod
+    Properties:
+      RestApiId: !Ref apiGateway
+      StageName: !Ref apiGatewayStageName
+
+  lambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code: 
+        S3Bucket: my-package
+        S3Key: localstack.zip
+      Description: Lambda é responsavel por receber as requisições a partir do API Gateway e repousar os eventos em uma fila SQS.
+      FunctionName: !Ref lambdaFunctionName
+      Handler: handler.handler
+      MemorySize: 128
+      Role: !GetAtt lambdaIAMRole.Arn
+      Runtime: nodejs12.x
+      Environment:
+        Variables:
+          QUEUE_URL: !Sub https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${QueueName}
+          QUEUE_URL_DLQ: !Sub https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${QueueNameDLQ}
+
+  lambdaVersion:
+    Type: AWS::Lambda::Version
+    Properties:
+      FunctionName: !Ref lambdaFunction
+
+  lambdaApiGatewayInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt lambdaFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${apiGateway}/${apiGatewayStageName}/${apiGatewayHTTPMethod}/${apiGatewayResourceName}
+
+  lambdaIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+      Policies:
+        - PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${lambdaFunctionName}:*
+              - Action:
+                  - sqs:SendMessage
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${QueueName}
+                  - !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${QueueNameDLQ}
+          PolicyName: lambda-integration-policy
+
+  lambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${lambdaFunctionName}
+      RetentionInDays: 90
+
+  TestQueue: 
+    Type: AWS::SQS::Queue
+    Properties: 
+      QueueName: !Ref QueueName
+      # incluir as propriedaded de visibility timeout entre outras
+
+  TestQueueDLQ: 
+    Type: AWS::SQS::Queue
+    Properties: 
+      QueueName: !Ref QueueNameDLQ
+      # incluir as propriedaded de visibility timeout entre outras
+
+Outputs:
+  apiGatewayInvokeURL:
+    Value: !Sub https://${apiGateway}.execute-api.${AWS::Region}.amazonaws.com/${apiGatewayStageName}/${apiGatewayResourceName}
+
+  localStackInvokeURL:
+    Value: !Sub http://localhost:4566/restapis/${apiGateway}/${apiGatewayStageName}/_user_request_/${apiGatewayResourceName}    
+
+  lambdaArn:
+    Value: !GetAtt lambdaFunction.Arn
+  
+  queueArn:
+    Value: !GetAtt TestQueue.Arn
