@@ -1,7 +1,7 @@
 'use strict';
 
 const factory = require('./factory');
-const SQS = require('aws-sdk/clients/sqs');
+const AWS = require('aws-sdk');
 //const AWS = require('aws-sdk');
 
 const config = {
@@ -13,7 +13,7 @@ const config = {
   },
 }
 
-const sqs = new SQS(config);
+const sqs = new AWS.SQS(config);
 
 module.exports = config => ({
   repositorySqs: factory({

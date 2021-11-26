@@ -1,33 +1,44 @@
 'use strict';
 
-const queueWrapper = (adapters) => {
-  const send = async (request) => {
-    const events = {
-      body: request.body,
-      headers: request.headers,
-    };
+const config = require('../../../config');
+const { repositorySqs } = require('../../repository/sqs')({ config });
+const adapters = require('../../adapters')({ repositorySqs, config });
 
-    const response = await adapters.send(events);
+const queueWrapper = () => {
+  const send = async (event) => {
 
-    // Tratar apenas os erros de insert no SQS, os erros de formatação não prcisam.
+    let response = {};
 
-    //Precisa validar o retorno e salvar para identificar os registros que não foram processados?
-    //return response;
+    try {
+      response = await adapters.send(event);
+      
+      checkFailures(response, event.headers);
+      //const { processingStatus: { failed } } = response;
+      //if (failed && Array.isArray(failed) && failed.length > 0) {
+        //await adapters.sendDLQ({ headers: event.headers, body: failed });
+      //}
 
-    return {
+    } catch (error) {
+      console.log(error);
+      return { statusCode: 200, body: JSON.stringify(error) };
+    }
+
+    const result = {
       statusCode: 200,
-      body: `Recebemos ${response.eventGroupReceived.length} mensagens e destas processamos um total de ${response.processingStatus.successful.length} com sucesso! Quantidade de mensagens com erro ${response.processingStatus.failed.length}`,
-      response,
+      body: `Recebemos ${response.receivedAmount.length} mensagens e destas processamos um total de ${response.processingStatus.successful.length} com sucesso! Quantidade de mensagens com erro ${response.processingStatus.failed.length}`
     };
+    console.log(JSON.stringify(result));
+    return result;
   };
 
-  const remove = async (events) => {
-    return await adapters.remove(events);
+  const checkFailures = (data, headers) => {
+    const { processingStatus: { failed } } = data;
+    if (failed && Array.isArray(failed) && failed.length > 0) {
+      await adapters.sendDLQ({ headers, body: failed });
+    }
   };
 
-  return {
-    send,
-  };
+  return { send };
 };
 
 module.exports = queueWrapper;

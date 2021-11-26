@@ -7,8 +7,8 @@ module.exports = dependencies => ({
     repositorySqs: dependencies.repositorySqs,
     config: dependencies.config,
   }).send,
-  remove: queueWrapper({
+  sendDLQ: queueWrapper({
     repositorySqs: dependencies.repositorySqs,
     config: dependencies.config,
-  }).remove,
+  }).sendDLQ,
 });

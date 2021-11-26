@@ -1,13 +1,13 @@
 'use strict';
 
-const uuidv4 = require('uuid/v4');
+const { v4: uuidv4 } = require('uuid');
 
 const wrapper = ({ sqs, config }) => {
 
-  const sendMessageBatch = async (event) => {
-
+  const sendMessageBatch = async (event, teste) => {
     const response = [];
 
+    // #region foreach
     /** Execução ocorre em paralelo e sem ordem, não espera o termino para retornar. **/
 
     /*** 
@@ -29,12 +29,13 @@ const wrapper = ({ sqs, config }) => {
     });
      * 
      ***/
+    // #endregion
 
     /** Execução ocorre de forma sequencial e em ordem, espera o termino para retornar. **/
     try {
 
-      for (const group of event.eventGroup) {
-        var params = {
+      for (const group of event.group) {
+        const params = {
           QueueUrl: event.queueUrl,
           Entries: []
         };
@@ -46,31 +47,19 @@ const wrapper = ({ sqs, config }) => {
         }
 
         console.log(JSON.stringify(params));
-        const { Successful, Failed } = await sqs.sendMessageBatch(params).promise();
-
-        response.push({
-          Successful,
-          Failed
-        });
-
+        const { Successful = [], Failed = [] } = await sqs.sendMessageBatch(params).promise();
+        response.push({ Successful, Failed });
       }
     }
     catch (error) {
-      console.log(error);
-
-      throw {
-        statusCode: 400,
-        body: JSON.stringify(error),
-      }
+      throw error;
     }
-
     return response;
   };
 
 
   const deleteMessageBatch = async (event) => {
-
-    var params = {
+    const params = {
       QueueUrl: event.queueUrl,
       Entries: []
     };
@@ -81,7 +70,6 @@ const wrapper = ({ sqs, config }) => {
         ReceiptHandle: item.MessageId,
       })
     }
-
     sqs.deleteMessageBatch(params).promise();
   };
 

@@ -8,79 +8,63 @@ const queueWrapper = ({
   config,
 }) => {
 
-  const generateMessageGroup = (eventGroup, limit) => new Array(Math.ceil(eventGroup.length / limit)).fill().map(_ => eventGroup.splice(0, limit));
+  const isFailed = queueMessage => queueMessage.map(item => item.Failed).flat();
+  const joinErrors = (item, invalidEvents) => item.failed.push(...invalidEvents);
+  const isSuccessful = queueMessage => queueMessage.map(item => item.Successful).flat();
+  const processingStatus = (data) => ({ successful: isSuccessful(data), failed: isFailed(data) });
+  const parse = body => typeof body === 'string' ? JSON.parse(body) : JSON.parse(JSON.stringify(body));
+  const makeObject = (event, headers, queueUrl) => ({ group: eventsBatch(event, 10), headers, queueUrl: queueUrl });
+  const eventsBatch = (event, limitRecords) => new Array(Math.ceil(event.length / limitRecords)).fill().map(_ => event.splice(0, limitRecords));
 
-  const validateEvents = eventGroup => {
-    return eventGroup.filter(message => {
+  const validateEvents = event => {
+    const validEvents = [];
+    const invalidEvents = [];
+    const eventsReceived = [...parse(event.body)];
+
+    eventsReceived.forEach(item => {
       const schemaQueue = Joi.object(queueSchema.request.queue);
-      const { error } = schemaQueue.validate(message);
+      const { error } = schemaQueue.validate(item);
 
-      // const schemaHeader = Joi.object(queueSchema.request.header);
-      // const { errorHeader } = schemaHeader.validate(event.headers);    
+      if (!error) validEvents.push(item);
+      else invalidEvents.push({ item, error });
+    });
 
-      if (!error) {
-        return message;
-      }
-      else { console.log(JSON.stringify(error)); };
-    })
+    return { validEvents, invalidEvents };
   };
 
-  const isSuccessful = queueMessage => queueMessage.map(item => item.Successful).flat();
-  const isFailed = queueMessage => queueMessage.map(item => item.Failed).flat();
-  const difference = (eventsReceived, eventsGroupHandled) => eventsReceived.filter(item => !eventsGroupHandled.includes(item));
-
-  const send = async ({ body, headers }) => {
-
+  const send = async (event) => {
     let response = {};
-
+    console.log(' adapter.send --> ' + JSON.stringify(event));
     try {
+      response.receivedAmount = [...parse(event.body)];
+      const { validEvents, invalidEvents } = validateEvents(event);
+      const data = makeObject(validEvents, event.headers, config.queueUrl);
 
-      response.eventGroupReceived = JSON.parse(body);
-      const eventGroup = generateMessageGroup(validateEvents(response.eventGroupReceived), config.limit);
-
-      const event = {
-        eventGroup,
-        headers: headers,
-        queueUrl: config.queueUrl,
-      };
-
-      try {
-        const queueMessage = await repositorySqs.sendMessageBatch(event);
-
-        response.processingStatus = {
-          successful: isSuccessful(queueMessage),
-          failed: isFailed(queueMessage),
-        };
-
-        const eventsRemovedFormattingError = difference(response.eventGroupReceived, eventGroup.flat());
-        if (eventsRemovedFormattingError) response.processingStatus.failed.push(eventsRemovedFormattingError);
-
-        console.log(JSON.stringify(response));
-
-      } catch (error) {
-        console.log(JSON.stringify(error));
-        throw error;
-      }
+      joinErrors(
+        response.processingStatus = processingStatus(await repositorySqs.sendMessageBatch(data)),
+        invalidEvents
+      );
+      console.log(JSON.stringify(response));
     } catch (error) {
-
-      return {
-        statusCode: 400,
-        body: `Erro ao processar eventos ${error}`,
-      };
+      throw error;
     }
-
     return response;
   };
 
-  const remove = async (events) => {
-    const event = {
-      events: headers,
-      queueUrl: config.queueUrl,
-    };
-    repositorySqs.remove(event);
-  }
+  const sendDLQ = async (event) => {
+    let response = {};
+    console.log(' adapter.sendDLQ --> ' + JSON.stringify(event));
+    try {
+      const data = makeObject(event.body, event.headers, config.queueUrlDlq);
+      response.processingStatus = processingStatus(await repositorySqs.sendMessageBatch(data));
+      console.log(JSON.stringify(response));
+    } catch (error) {
+      throw error;
+    }
+    return response;
+  };
 
-  return { send, remove };
+  return { send, sendDLQ };
 };
 
 module.exports = queueWrapper;

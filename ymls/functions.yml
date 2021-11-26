@@ -1,32 +1,6 @@
 process-message:
   handler: index.sendMessage
   memorySize: 256
-  warmup: true
-  iamRoleStatementsName: ${self:service}-${self:provider.stage}-process-message-role
-  iamRoleStatements:
-    - Effect: Allow
-      Action:
-        - lambda:InvokeAsync
-        - lambda:InvokeFunction
-      Resource: '*'
-    - Effect: Allow
-      Action:
-      - logs:CreateLogGroup
-      Resource: "*"
-    - Effect: Allow
-      Action:
-      - logs:CreateLogStream
-      Resource: "*"
-    - Effect: Allow
-      Action:
-      - logs:PutLogEvents
-      Resource: "*"
-    - Effect: Allow
-      Action:
-      - “sqs:SendMessage”
-      - “sqs:GetQueueUrl”
-      - "sqs:ListQueues"
-      Resource: "*"
   events:
     - http:
         path: events/send

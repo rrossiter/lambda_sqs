@@ -9,4 +9,5 @@ module.exports = {
   account: process.env.ACCOUNT_ID,
   limit: process.env.LIMIT,
   queueUrl: process.env.QUEUE_URL,
+  queueUrlDlq: process.env.QUEUE_URL_DLQ,
 };
