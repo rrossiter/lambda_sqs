@@ -34,7 +34,7 @@ const queueWrapper = () => {
   const checkFailures = (data, headers) => {
     const { processingStatus: { failed } } = data;
     if (failed && Array.isArray(failed) && failed.length > 0) {
-      await adapters.sendDLQ({ headers, body: failed });
+      adapters.sendDLQ({ headers, body: failed });
     }
   };
 
