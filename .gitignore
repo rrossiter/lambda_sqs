@@ -1,2 +1,17 @@
-/node_modules/*
-/.package-lock.json
+# Coverage directory used by tools like istanbul
+coverage
+
+# nyc test coverage
+.nyc_output
+
+# framework serverless output
+.serverless
+
+# Dependency directories
+node_modules/
+
+# Optional npm cache directory
+.npm
+
+#
+package-lock.json
