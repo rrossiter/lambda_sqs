@@ -21,7 +21,7 @@ Esse projeto contempla a execução via localstack dos seguintes serviços da aw
 
 1. Configurar docker e baixar a imagem do localstack
     - docker pull localstack/localstack (repositório: https://hub.docker.com/r/localstack/localstack)
-    - Rodar o comando "docker compose up" (arquivo docker-compose.yml está no projeto, para entender as possiveis configurações, verificar o https://github.com/localstack/localstack)
+    - Rodar o comando "docker-compose up" (arquivo docker-compose.yml está no projeto, para entender as possiveis configurações, verificar o https://github.com/localstack/localstack)
 2. Criar um bucket
     - aws s3 --endpoint-url=http://localhost:4566 mb s3://my-bucket --region sa-east-1
     - Gerar arquivo .zip do projeto node
