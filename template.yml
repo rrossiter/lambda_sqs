@@ -8,7 +8,7 @@ Parameters:
   apiGatewayStageName:
     Type: String
     AllowedPattern: "[a-z0-9]+"
-    Default: dev/v1
+    Default: dev
   apiGatewayResourceName:
     Type: String
     AllowedPattern: "[a-z0-9]+"
@@ -45,7 +45,7 @@ Resources:
     Properties:
       ParentId: !GetAtt apiGateway.RootResourceId
       PathPart: !Ref apiGatewayResourceName
-      RestApiId: !Ref apiGateway     
+      RestApiId: !Ref apiGateway
 
   apiGatewayRootMethod:
     Type: AWS::ApiGateway::Method
@@ -53,6 +53,7 @@ Resources:
       AuthorizationType: NONE
       HttpMethod: !Ref apiGatewayHTTPMethod
       RequestParameters:
+        # COMENTAR QUANDO EXECUTAR VIA LOCALSTACK
         method.request.header.InvocationType: ""
       Integration:
         RequestTemplates:
@@ -141,6 +142,8 @@ Resources:
       Runtime: nodejs12.x
       Environment:
         Variables:
+          # SUBSTITUIR QUANDO FOR EXECUTAR VIA LOCALSTACK
+          # QUEUE_URL: !Sub http://localhost:4566/000000000000/received-events
           QUEUE_URL: !Sub https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${QueueName}
           QUEUE_URL_DLQ: !Sub https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/${QueueNameDLQ}
 
